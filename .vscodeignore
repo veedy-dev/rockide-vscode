@@ -1,0 +1,8 @@
+.vscode/**
+src/**
+.gitignore
+.prettierrc
+vsc-extension-quickstart.md
+**/tsconfig.json
+**/*.map
+**/*.ts
