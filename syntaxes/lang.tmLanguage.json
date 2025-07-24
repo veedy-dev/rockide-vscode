@@ -11,9 +11,8 @@
         "2": { "name": "keyword.operator" },
         "3": {
           "patterns": [
-            { "name": "keyword", "match": "%d" },
-            { "name": "keyword", "match": "%s" },
-            { "name": "keyword", "match": "%[0-9]+" },
+            { "name": "keyword", "match": "%[ds](\\$[ds])?" },
+            { "name": "keyword", "match": "%[0-9]+(\\$[ds])?" },
             { "name": "comment.line", "begin": "##", "end": "$" }
           ]
         }
