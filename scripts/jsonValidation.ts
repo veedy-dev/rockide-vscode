@@ -144,6 +144,4 @@ async function main() {
   await Bun.write("./package.json", JSON.stringify(pkg, null, 2));
 }
 
-(async () => {
-  await main();
-})();
+main();
