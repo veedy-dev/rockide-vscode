@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { getPlatformInfo } from "./platform";
 import { logger } from "./logger";
 
-const GITHUB_API_URL = "https://api.github.com/repos/ink0rr/rockide/releases";
+const GITHUB_API_URL = "https://api.github.com/repos/veedy-dev/rockide/releases";
 
 export interface GitHubRelease {
   id: number;
@@ -31,6 +31,7 @@ export class GitHubClient {
   private userAgent = "rockide-vscode";
 
   async getLatestRelease(): Promise<GitHubRelease | null> {
+    logger.log(`Fetching latest release from ${GITHUB_API_URL}/latest`);
     try {
       const response = await fetch(`${GITHUB_API_URL}/latest`, {
         headers: {
@@ -54,6 +55,7 @@ export class GitHubClient {
   }
 
   async getAllReleases(): Promise<GitHubRelease[]> {
+    logger.log(`Fetching all releases from ${GITHUB_API_URL}`);
     try {
       const response = await fetch(GITHUB_API_URL, {
         headers: {
@@ -66,7 +68,9 @@ export class GitHubClient {
         throw new Error(`GitHub API error: ${response.status} ${response.statusText}`);
       }
 
-      return await response.json() as GitHubRelease[];
+      const releases = await response.json() as GitHubRelease[];
+      logger.log(`Successfully fetched ${releases.length} releases`);
+      return releases;
     } catch (error) {
       logger.error("Failed to fetch releases", error);
       throw error;
@@ -96,6 +100,7 @@ export class GitHubClient {
   }
 
   async selectRelease(releases?: GitHubRelease[]): Promise<GitHubRelease | undefined> {
+    logger.log("Showing release selection dialog...");
     const items = (releases || (await this.getAllReleases())).map((release) => ({
       label: release.tag_name,
       description: release.name || undefined,
@@ -103,9 +108,17 @@ export class GitHubClient {
       release,
     }));
 
+    logger.log(`Prepared ${items.length} releases for selection`);
+    
     const selected = await vscode.window.showQuickPick(items, {
       placeHolder: "Select a Rockide version to install",
     });
+
+    if (selected) {
+      logger.log(`User selected release: ${selected.release.tag_name}`);
+    } else {
+      logger.log("User cancelled release selection");
+    }
 
     return selected?.release;
   }

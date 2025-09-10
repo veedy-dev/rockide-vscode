@@ -15,51 +15,78 @@ let client: LanguageClient;
 let installer: RockideInstaller;
 
 export async function activate(context: ExtensionContext) {
-  logger.log("Rockide extension activating...");
-  
-  // Initialize installer and register commands immediately
-  installer = new RockideInstaller(context);
-  registerCommands(context);
-  logger.log("Commands registered successfully");
+  try {
+    logger.log("Rockide extension activating...");
+    
+    // Initialize installer first - this is needed for commands to work
+    logger.log("Initializing installer...");
+    installer = new RockideInstaller(context);
+    logger.log("Installer initialized successfully");
+    
+    // Register commands
+    logger.log("Registering commands...");
+    registerCommands(context);
+    logger.log("Commands registered successfully");
 
-  // Start language server only if in a Minecraft workspace with valid platform
-  if (await isMinecraftWorkspace()) {
-    if (!isValidPlatform()) {
-      window.showErrorMessage("Your platform is not supported by Rockide");
-      logger.log("Platform not supported, language server not started");
-    } else {
-      const binaryPath = await ensureRockideBinary(context);
-      if (!binaryPath) {
-        window.showErrorMessage("Failed to initialize Rockide. Please check the extension output for details.");
-        logger.log("Failed to get binary path, language server not started");
+    // Try to start language server if in appropriate workspace
+    // This is optional and should not block activation
+    try {
+      logger.log("Checking workspace type...");
+      const isMinecraft = await isMinecraftWorkspace();
+      logger.log(`Workspace is Minecraft: ${isMinecraft}`);
+      
+      if (isMinecraft) {
+        if (!isValidPlatform()) {
+          window.showErrorMessage("Your platform is not supported by Rockide");
+          logger.log("Platform not supported, language server not started");
+        } else {
+          logger.log("Attempting to start language server...");
+          const binaryPath = await ensureRockideBinary(context);
+          if (!binaryPath) {
+            window.showErrorMessage("Failed to initialize Rockide. Please check the extension output for details.");
+            logger.log("Failed to get binary path, language server not started");
+          } else {
+            logger.log(`Starting language server with binary: ${binaryPath}`);
+            const serverOptions: ServerOptions = {
+              command: binaryPath,
+            };
+            const clientOptions: LanguageClientOptions = {
+              documentSelector: [
+                { scheme: "file", language: "json" },
+                { scheme: "file", language: "jsonc" },
+              ],
+              uriConverters: {
+                code2Protocol: (uri) => uri.toString(true),
+                protocol2Code: (path) => Uri.parse(path),
+              },
+              initializationOptions: getProjectPaths(),
+            };
+            client = new LanguageClient("rockide", "Rockide", serverOptions, clientOptions);
+            client.onNotification("shutdown", () => {
+              client.stop();
+            });
+            await client.start();
+            logger.log("Language server started successfully");
+          }
+        }
       } else {
-        const serverOptions: ServerOptions = {
-          command: binaryPath,
-        };
-        const clientOptions: LanguageClientOptions = {
-          documentSelector: [
-            { scheme: "file", language: "json" },
-            { scheme: "file", language: "jsonc" },
-          ],
-          uriConverters: {
-            code2Protocol: (uri) => uri.toString(true),
-            protocol2Code: (path) => Uri.parse(path),
-          },
-          initializationOptions: getProjectPaths(),
-        };
-        client = new LanguageClient("rockide", "Rockide", serverOptions, clientOptions);
-        client.onNotification("shutdown", () => {
-          client.stop();
-        });
-        client.start();
-        logger.log("Language server started successfully");
+        logger.log("Not in a Minecraft workspace, language server not started");
       }
+    } catch (error) {
+      // Don't let language server initialization failure prevent activation
+      logger.error("Failed to initialize language server", error);
     }
-  } else {
-    logger.log("Not in a Minecraft workspace, language server not started");
+    
+    logger.log("Rockide extension activated successfully");
+  } catch (error) {
+    // Log the error but don't throw - we want activation to succeed
+    logger.error("Error during extension activation", error);
+    logger.log("Extension activated with errors - commands should still work");
+    
+    // Show error to user but don't block
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    window.showErrorMessage(`Rockide extension encountered an error during activation: ${errorMessage}. Commands may still work.`);
   }
-  
-  logger.log("Rockide extension activated successfully");
 }
 
 async function ensureRockideBinary(context: ExtensionContext): Promise<string | null> {
@@ -162,16 +189,26 @@ async function checkForUpdatesInBackground(context: ExtensionContext): Promise<v
 }
 
 async function updateRockide(): Promise<void> {
+  if (!installer) {
+    throw new Error("Installer not initialized");
+  }
+  
+  logger.log("Starting Rockide update...");
   const newPath = await installer.install({ forceReinstall: true });
   if (newPath) {
+    logger.log(`Rockide updated successfully to: ${newPath}`);
     const choice = await window.showInformationMessage(
       "Rockide has been updated. Please reload the window to use the new version.",
       "Reload"
     );
 
     if (choice === "Reload") {
+      logger.log("Reloading window...");
       commands.executeCommand("workbench.action.reloadWindow");
     }
+  } else {
+    logger.error("Update completed but no path returned");
+    window.showErrorMessage("Failed to update Rockide");
   }
 }
 
@@ -182,8 +219,15 @@ function registerCommands(context: ExtensionContext): void {
     commands.registerCommand("rockide.update", async () => {
       logger.log("Update command invoked");
       try {
+        // Ensure installer is initialized
+        if (!installer) {
+          logger.warn("Installer not initialized, creating new instance");
+          installer = new RockideInstaller(context);
+        }
+        
         await updateRockide();
       } catch (error) {
+        logger.error("Update command failed", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
         window.showErrorMessage(`Failed to update: ${errorMessage}`);
       }
@@ -192,6 +236,12 @@ function registerCommands(context: ExtensionContext): void {
     commands.registerCommand("rockide.selectVersion", async () => {
       logger.log("Select version command invoked");
       try {
+        // Ensure installer is initialized
+        if (!installer) {
+          logger.warn("Installer not initialized, creating new instance");
+          installer = new RockideInstaller(context);
+        }
+        
         const githubClient = new GitHubClient();
         logger.log("Fetching releases...");
         const releases = await githubClient.getAllReleases();
@@ -212,17 +262,22 @@ function registerCommands(context: ExtensionContext): void {
           
           if (newPath) {
             window.showInformationMessage(`Rockide ${selected.tag_name} installed successfully.`);
+          } else {
+            logger.error("Installation returned no path");
+            window.showErrorMessage("Failed to install selected version");
           }
         } else {
           logger.log("User cancelled version selection");
         }
       } catch (error) {
-        logger.error("Failed to select version", error);
+        logger.error("Select version command failed", error);
         const errorMessage = error instanceof Error ? error.message : String(error);
         window.showErrorMessage(`Failed to fetch releases: ${errorMessage}`);
       }
     })
   );
+  
+  logger.log("Commands registered");
 }
 
 export function deactivate() {

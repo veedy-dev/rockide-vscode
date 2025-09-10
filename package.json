@@ -43,6 +43,8 @@
     "typescript": "^5.8.3"
   },
   "activationEvents": [
+    "onCommand:rockide.update",
+    "onCommand:rockide.selectVersion",
     "onLanguage:json",
     "onLanguage:jsonc",
     "workspaceContains:**/*.mcfunction",
