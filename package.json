@@ -50,6 +50,16 @@
     "workspaceContains:**/*.mcworld"
   ],
   "contributes": {
+    "commands": [
+      {
+        "command": "rockide.update",
+        "title": "Rockide: Update Binary"
+      },
+      {
+        "command": "rockide.selectVersion",
+        "title": "Rockide: Select Version"
+      }
+    ],
     "configuration": {
       "title": "Rockide Configuration",
       "properties": {
@@ -75,6 +85,26 @@
             }
           ],
           "markdownDescription": "Specify where the BP and RP folders are located, relative to the current location.\n\nIf unset, it will check inside the current folder and the `./packs` folder.\n\n**Not recommended to be set globally.**"
+        },
+        "rockide.binaryPath": {
+          "type": "string",
+          "markdownDescription": "Custom path to the Rockide binary. If not set, the extension will automatically download and manage the binary.",
+          "default": null
+        },
+        "rockide.autoUpdate": {
+          "type": "boolean",
+          "markdownDescription": "Automatically update Rockide to the latest version when available.",
+          "default": true
+        },
+        "rockide.version": {
+          "type": "string",
+          "markdownDescription": "Preferred Rockide version to use. Set to 'latest' for the most recent release, or specify a version like 'v1.0.0'.",
+          "default": "latest"
+        },
+        "rockide.checkForUpdates": {
+          "type": "boolean",
+          "markdownDescription": "Check for Rockide updates on extension activation.",
+          "default": true
         }
       }
     },
