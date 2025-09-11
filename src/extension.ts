@@ -43,8 +43,9 @@ export async function activate(context: ExtensionContext) {
           logger.log("Attempting to start language server...");
           
           // Add timeout to prevent hanging during binary resolution
+          let timeoutId: NodeJS.Timeout | undefined;
           const timeoutPromise = new Promise<string | null>((resolve) => {
-            setTimeout(() => {
+            timeoutId = setTimeout(() => {
               logger.warn("Binary resolution timed out after 10 seconds");
               resolve(null);
             }, 10000);
@@ -54,6 +55,11 @@ export async function activate(context: ExtensionContext) {
             ensureRockideBinary(context),
             timeoutPromise
           ]);
+          
+          // Clear the timeout to prevent spurious warnings
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
           
           if (!binaryPath) {
             window.showErrorMessage("Failed to initialize Rockide. Please check the extension output for details.");
@@ -152,15 +158,11 @@ async function ensureRockideBinary(context: ExtensionContext): Promise<string | 
 
 async function verifyBinary(binaryPath: string): Promise<boolean> {
   logger.log(`verifyBinary: Checking binary at ${binaryPath}`);
-  try {
-    // Add 5 second timeout to prevent hanging
-    const { stdout } = await execAsync(`"${binaryPath}" --version`, { timeout: 5000 });
-    logger.log(`verifyBinary: Binary verified successfully, version output: ${stdout.trim()}`);
-    return true;
-  } catch (error) {
-    logger.log(`verifyBinary: Binary verification failed: ${error instanceof Error ? error.message : String(error)}`);
-    return false;
-  }
+  // Since rockide is a language server, we just check if the file exists
+  // instead of trying to execute it with --version
+  const exists = fs.existsSync(binaryPath);
+  logger.log(`verifyBinary: Binary exists: ${exists}`);
+  return exists;
 }
 
 async function findRockideInPath(): Promise<string | null> {
