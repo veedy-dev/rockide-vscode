@@ -97,7 +97,17 @@ export class GitHubClient {
   }
 
   async selectRelease(releases?: GitHubRelease[]): Promise<GitHubRelease | undefined> {
-    const items = (releases || (await this.getAllReleases())).map((release) => ({
+    const list = releases || (await this.getAllReleases());
+    const limited = list
+      .slice()
+      .sort((a, b) => {
+        const ad = new Date(a.published_at || a.created_at).getTime();
+        const bd = new Date(b.published_at || b.created_at).getTime();
+        return bd - ad;
+      })
+      .slice(0, 5);
+
+    const items = limited.map((release) => ({
       label: release.tag_name,
       description: release.name || undefined,
       detail: release.prerelease ? "Pre-release" : undefined,
