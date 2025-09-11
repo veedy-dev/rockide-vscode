@@ -36,7 +36,6 @@ export class RockideInstaller {
     try {
       const customPath = vscode.workspace.getConfiguration("rockide").get<string>("binaryPath");
       if (customPath && fs.existsSync(customPath) && !options.forceReinstall) {
-        logger.log(`Using custom binary path: ${customPath}`);
         return customPath;
       }
 

@@ -1,6 +1,5 @@
 import * as JSONC from "jsonc-parser";
 import { window, workspace } from "vscode";
-import { logger } from "./logger";
 
 const projectGlob = "{behavior_pack,*BP,BP_*,*bp,bp_*,resource_pack,*RP,RP_*,*rp,rp_*}";
 
@@ -26,7 +25,6 @@ export async function isMinecraftWorkspace() {
 export function getProjectPaths() {
   const config = workspace.getConfiguration("rockide");
   const projectPaths = config.get("projectPaths");
-  logger.log(`Project paths: ${JSON.stringify(projectPaths)}`);
   if (projectPaths && typeof projectPaths === "object") {
     if (!("behaviorPack" in projectPaths) || !("resourcePack" in projectPaths)) {
       window.showErrorMessage("Invalid project paths configuration.");
