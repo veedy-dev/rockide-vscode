@@ -2,14 +2,12 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { promisify } from "util";
-import { exec } from "child_process";
 import { GitHubClient } from "./github";
 import { Downloader } from "./downloader";
 import { Extractor } from "./extractor";
 import { getPlatformInfo } from "./platform";
 import { logger } from "./logger";
 
-const execAsync = promisify(exec);
 const readdirAsync = promisify(fs.readdir);
 const statAsync = promisify(fs.stat);
 const rmdirAsync = promisify(fs.rmdir);
@@ -100,9 +98,15 @@ export class RockideInstaller {
       const binaryPath = await this.getActiveBinaryPath();
       if (!binaryPath) return null;
 
-      const { stdout } = await execAsync(`"${binaryPath}" --version`);
-      const match = stdout.match(/v?(\d+\.\d+\.\d+)/);
-      return match ? match[1] : null;
+      // Extract version from the path (e.g., .../binaries/v0.0.5/rockide.exe)
+      const match = binaryPath.match(/binaries[/\\](v?\d+\.\d+\.\d+)[/\\]/);
+      if (match) {
+        return match[1];
+      }
+
+      // Fallback: get the latest installed version
+      const versions = await this.getInstalledVersions();
+      return versions.length > 0 ? versions[0] : null;
     } catch (error) {
       logger.error("Failed to get current version", error);
       return null;
@@ -132,6 +136,12 @@ export class RockideInstaller {
     const versionDir = path.join(this.getBinariesDir(), version);
 
     try {
+      // Clean up existing version directory if it exists (for updates)
+      if (fs.existsSync(versionDir)) {
+        logger.log(`Cleaning up existing version directory: ${versionDir}`);
+        await this.cleanup(versionDir);
+      }
+
       await this.downloader.downloadWithProgress({
         url: downloadUrl,
         destPath: archivePath,
@@ -151,12 +161,18 @@ export class RockideInstaller {
   }
 
   private async verifyInstallation(binaryPath: string): Promise<void> {
-    try {
-      const { stdout, stderr } = await execAsync(`"${binaryPath}" --version`);
-      logger.log(`Rockide version: ${stdout || stderr}`);
-    } catch (error) {
-      throw new Error(`Binary verification failed: ${error}`);
+    // Just verify the file exists and has reasonable size
+    // since rockide doesn't support --version flag
+    if (!fs.existsSync(binaryPath)) {
+      throw new Error(`Binary not found at ${binaryPath}`);
     }
+    
+    const stats = fs.statSync(binaryPath);
+    if (stats.size < 1000000) { // Less than 1MB is suspicious
+      throw new Error(`Binary appears to be invalid (size: ${stats.size} bytes)`);
+    }
+    
+    logger.log(`Binary verified at ${binaryPath} (size: ${stats.size} bytes)`);
   }
 
   private async getInstalledBinaryPath(version: string): Promise<string | null> {

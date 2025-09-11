@@ -46,9 +46,9 @@ export async function activate(context: ExtensionContext) {
           let timeoutId: NodeJS.Timeout | undefined;
           const timeoutPromise = new Promise<string | null>((resolve) => {
             timeoutId = setTimeout(() => {
-              logger.warn("Binary resolution timed out after 10 seconds");
+              logger.warn("Binary resolution timed out after 30 seconds");
               resolve(null);
-            }, 10000);
+            }, 30000);
           });
           
           const binaryPath = await Promise.race([
@@ -237,6 +237,22 @@ async function checkForUpdatesInBackground(context: ExtensionContext): Promise<v
 async function updateRockide(): Promise<void> {
   if (!installer) {
     throw new Error("Installer not initialized");
+  }
+  
+  logger.log("Checking for Rockide updates...");
+  
+  // Check if update is available
+  const hasUpdate = await installer.checkForUpdates();
+  if (!hasUpdate) {
+    logger.log("Rockide is already up to date");
+    window.showInformationMessage("Rockide is already up to date");
+    return;
+  }
+  
+  // Stop language server if running
+  if (client) {
+    logger.log("Stopping language server for update...");
+    await client.stop();
   }
   
   logger.log("Starting Rockide update...");

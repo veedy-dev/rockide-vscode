@@ -55,7 +55,7 @@
     "commands": [
       {
         "command": "rockide.update",
-        "title": "Rockide: Update Binary"
+        "title": "Rockide: Check for Updates"
       },
       {
         "command": "rockide.selectVersion",
