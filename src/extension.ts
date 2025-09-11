@@ -41,7 +41,20 @@ export async function activate(context: ExtensionContext) {
           logger.log("Platform not supported, language server not started");
         } else {
           logger.log("Attempting to start language server...");
-          const binaryPath = await ensureRockideBinary(context);
+          
+          // Add timeout to prevent hanging during binary resolution
+          const timeoutPromise = new Promise<string | null>((resolve) => {
+            setTimeout(() => {
+              logger.warn("Binary resolution timed out after 10 seconds");
+              resolve(null);
+            }, 10000);
+          });
+          
+          const binaryPath = await Promise.race([
+            ensureRockideBinary(context),
+            timeoutPromise
+          ]);
+          
           if (!binaryPath) {
             window.showErrorMessage("Failed to initialize Rockide. Please check the extension output for details.");
             logger.log("Failed to get binary path, language server not started");
@@ -65,8 +78,13 @@ export async function activate(context: ExtensionContext) {
             client.onNotification("shutdown", () => {
               client.stop();
             });
-            await client.start();
-            logger.log("Language server started successfully");
+            // Don't await - let it start in background to prevent blocking activation
+            client.start().then(() => {
+              logger.log("Language server started successfully");
+            }).catch((error) => {
+              logger.error("Language server failed to start", error);
+            });
+            logger.log("Language server starting in background...");
           }
         }
       } else {
@@ -90,59 +108,85 @@ export async function activate(context: ExtensionContext) {
 }
 
 async function ensureRockideBinary(context: ExtensionContext): Promise<string | null> {
+  logger.log("ensureRockideBinary: Starting binary resolution...");
+  
   const config = workspace.getConfiguration("rockide");
   const customPath = config.get<string>("binaryPath");
 
   if (customPath && fs.existsSync(customPath)) {
-    logger.log(`Using custom Rockide binary: ${customPath}`);
+    logger.log(`ensureRockideBinary: Using custom Rockide binary: ${customPath}`);
     return customPath;
   }
 
+  logger.log("ensureRockideBinary: Getting active binary path from installer...");
   let binaryPath = await installer.getActiveBinaryPath();
+  logger.log(`ensureRockideBinary: Active binary path: ${binaryPath || "none"}`);
   
   if (!binaryPath || !(await verifyBinary(binaryPath))) {
+    logger.log("ensureRockideBinary: No valid binary found, attempting installation...");
     const preferredVersion = config.get<string>("version");
     const installOptions = preferredVersion && preferredVersion !== "latest" 
       ? { version: preferredVersion } 
       : {};
+    logger.log(`ensureRockideBinary: Installing with options: ${JSON.stringify(installOptions)}`);
     
     binaryPath = await installer.install(installOptions);
+    logger.log(`ensureRockideBinary: Installation complete, binary path: ${binaryPath || "none"}`);
   } else if (config.get<boolean>("checkForUpdates", true)) {
+    logger.log("ensureRockideBinary: Binary valid, checking for updates in background...");
     checkForUpdatesInBackground(context);
   }
 
   if (!binaryPath) {
+    logger.log("ensureRockideBinary: No binary from installer, checking system PATH...");
     binaryPath = await findRockideInPath();
     if (binaryPath) {
+      logger.log(`ensureRockideBinary: Found in PATH: ${binaryPath}`);
       window.showInformationMessage("Using Rockide from system PATH");
     }
   }
 
+  logger.log(`ensureRockideBinary: Final binary path: ${binaryPath || "none"}`);
   return binaryPath;
 }
 
 async function verifyBinary(binaryPath: string): Promise<boolean> {
+  logger.log(`verifyBinary: Checking binary at ${binaryPath}`);
   try {
-    await execAsync(`"${binaryPath}" --version`);
+    // Add 5 second timeout to prevent hanging
+    const { stdout } = await execAsync(`"${binaryPath}" --version`, { timeout: 5000 });
+    logger.log(`verifyBinary: Binary verified successfully, version output: ${stdout.trim()}`);
     return true;
-  } catch {
+  } catch (error) {
+    logger.log(`verifyBinary: Binary verification failed: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
 
 async function findRockideInPath(): Promise<string | null> {
+  logger.log("findRockideInPath: Searching for Rockide in system PATH...");
   try {
-    const { stdout } = await execAsync("where rockide");
+    const { stdout } = await execAsync("where rockide", { timeout: 3000 });
     const paths = stdout.trim().split("\n").filter(Boolean);
-    return paths[0] || null;
-  } catch {
+    if (paths[0]) {
+      logger.log(`findRockideInPath: Found in PATH (where): ${paths[0]}`);
+      return paths[0];
+    }
+  } catch (error) {
+    logger.log(`findRockideInPath: 'where' command failed: ${error instanceof Error ? error.message : String(error)}`);
     try {
-      const { stdout } = await execAsync("which rockide");
-      return stdout.trim() || null;
-    } catch {
-      return null;
+      const { stdout } = await execAsync("which rockide", { timeout: 3000 });
+      const path = stdout.trim();
+      if (path) {
+        logger.log(`findRockideInPath: Found in PATH (which): ${path}`);
+        return path;
+      }
+    } catch (error2) {
+      logger.log(`findRockideInPath: 'which' command failed: ${error2 instanceof Error ? error2.message : String(error2)}`);
     }
   }
+  logger.log("findRockideInPath: Rockide not found in system PATH");
+  return null;
 }
 
 async function checkForUpdatesInBackground(context: ExtensionContext): Promise<void> {
