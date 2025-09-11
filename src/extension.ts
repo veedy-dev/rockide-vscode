@@ -10,6 +10,10 @@ import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
+const BINARY_RESOLUTION_TIMEOUT_MS = 30000;
+const EXEC_TIMEOUT_MS = 3000;
+const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 let client: LanguageClient;
 let installer: RockideInstaller;
 
@@ -38,7 +42,6 @@ export async function activate(context: ExtensionContext) {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`Error during extension activation: ${errorMessage}`);
-    // User error message is already shown with window.showErrorMessage above
     window.showErrorMessage(`Rockide extension encountered an error during activation: ${errorMessage}. Commands may still work.`);
   }
 }
@@ -49,7 +52,7 @@ async function ensureRockideBinaryWithTimeout(context: ExtensionContext): Promis
     timeoutId = setTimeout(() => {
       console.warn("Binary resolution timed out after 30 seconds");
       resolve(null);
-    }, 30000);
+    }, BINARY_RESOLUTION_TIMEOUT_MS);
   });
   
   const binaryPath = await Promise.race([
@@ -125,26 +128,24 @@ async function verifyBinary(binaryPath: string): Promise<boolean> {
 }
 
 async function findRockideInPath(): Promise<string | null> {
-  // Try Windows first
   try {
-    const { stdout } = await execAsync("where rockide", { timeout: 3000 });
+    const { stdout } = await execAsync("where rockide", { timeout: EXEC_TIMEOUT_MS });
     const paths = stdout.trim().split("\n").filter(Boolean);
     if (paths[0]) {
       return paths[0];
     }
   } catch (error) {
-    // Ignore error, try Unix next
+    // Windows command failed, try Unix
   }
 
-  // Try Unix systems
   try {
-    const { stdout } = await execAsync("which rockide", { timeout: 3000 });
+    const { stdout } = await execAsync("which rockide", { timeout: EXEC_TIMEOUT_MS });
     const path = stdout.trim();
     if (path) {
       return path;
     }
   } catch (error) {
-    // Ignore error, return null
+    // Both commands failed
   }
 
   return null;
@@ -158,13 +159,11 @@ async function checkForUpdatesInBackground(context: ExtensionContext): Promise<v
     return;
   }
 
-  // Check if 24 hours have passed since last check
   const lastCheckKey = "rockide.lastUpdateCheck";
   const lastCheck = context.globalState.get<number>(lastCheckKey, 0);
   const now = Date.now();
-  const twentyFourHours = 24 * 60 * 60 * 1000;
 
-  if (now - lastCheck < twentyFourHours) {
+  if (now - lastCheck < UPDATE_CHECK_INTERVAL_MS) {
     return;
   }
 
@@ -185,7 +184,6 @@ async function checkForUpdatesInBackground(context: ExtensionContext): Promise<v
     }
   } catch (error) {
     console.error("Failed to check for updates:", error);
-    // Background check, no user notification needed
   }
 }
 
@@ -225,12 +223,10 @@ function registerCommands(context: ExtensionContext): void {
       try {
         if (!installer) {
           installer = new RockideInstaller(context);
-        }
-        
+        } 
         await updateRockide();
       } catch (error) {
         console.error("Update command failed:", error);
-        // User error message is already shown with window.showErrorMessage above
         const errorMessage = error instanceof Error ? error.message : String(error);
         window.showErrorMessage(`Failed to update: ${errorMessage}`);
       }
@@ -252,7 +248,6 @@ function registerCommands(context: ExtensionContext): void {
         
         const selected = await githubClient.selectRelease(releases);
         if (selected) {
-          // Stop the language server before reinstalling to avoid file lock issues
           if (client) {
             await client.stop();
           }
@@ -277,7 +272,6 @@ function registerCommands(context: ExtensionContext): void {
         }
       } catch (error) {
         console.error("Select version command failed:", error);
-        // User error message is already shown with window.showErrorMessage above
         const errorMessage = error instanceof Error ? error.message : String(error);
         window.showErrorMessage(`Failed to fetch releases: ${errorMessage}`);
       }

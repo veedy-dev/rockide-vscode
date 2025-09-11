@@ -146,7 +146,6 @@ export class Downloader {
         return false;
       }
 
-      console.log(`Verifying checksum for ${fileName}: ${expectedHash.substring(0, 16)}...`);
       return await CryptoUtils.verifyFileHash(filePath, expectedHash);
     } catch (error) {
       console.error("Failed to verify checksum:", error);

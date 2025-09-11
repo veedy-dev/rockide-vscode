@@ -12,6 +12,9 @@ const statAsync = promisify(fs.stat);
 const rmdirAsync = promisify(fs.rmdir);
 const unlinkAsync = promisify(fs.unlink);
 
+const MIN_BINARY_SIZE_BYTES = 1000000;
+const MAX_VERSIONS_TO_KEEP = 5;
+
 export interface InstallOptions {
   version?: string;
   forceReinstall?: boolean;
@@ -22,7 +25,7 @@ export class RockideInstaller {
   private downloader: Downloader;
   private extractor: Extractor;
   private context: vscode.ExtensionContext;
-  private maxVersions = 5;
+  private readonly maxVersions = MAX_VERSIONS_TO_KEEP;
 
   constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -180,7 +183,7 @@ export class RockideInstaller {
     }
     
     const stats = fs.statSync(binaryPath);
-    if (stats.size < 1000000) {
+    if (stats.size < MIN_BINARY_SIZE_BYTES) {
       throw new Error(`Binary appears to be invalid (size: ${stats.size} bytes)`);
     }
   }
@@ -253,18 +256,15 @@ export class RockideInstaller {
           try {
             await unlinkAsync(filePath);
           } catch (error: any) {
-            // Handle locked files gracefully
             if (error.code === 'EBUSY' || error.code === 'EPERM' || error.code === 'EACCES') {
               console.warn(`File is locked and will be cleaned on next restart: ${filePath}`);
-              // Continue with other files instead of stopping
               continue;
             }
-            throw error; // Re-throw other errors
+            throw error;
           }
         }
       }
       
-      // Try to remove directory, but don't fail if it contains locked files
       try {
         await rmdirAsync(dirPath);
       } catch (error: any) {

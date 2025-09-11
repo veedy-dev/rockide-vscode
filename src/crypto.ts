@@ -4,6 +4,8 @@ import { promisify } from "util";
 
 const readFileAsync = promisify(fs.readFile);
 
+const SHA256_HEX_LENGTH = 64;
+
 export class CryptoUtils {
   static async calculateFileHash(filePath: string): Promise<string> {
     const fileBuffer = await readFileAsync(filePath);
@@ -25,7 +27,7 @@ export class CryptoUtils {
       const trimmedLine = line.trim();
       if (!trimmedLine) continue;
       
-      const match = trimmedLine.match(/^([a-fA-F0-9]{64})\s+\*?(\S+)$/);
+      const match = trimmedLine.match(new RegExp(`^([a-fA-F0-9]{${SHA256_HEX_LENGTH}})\\s+\\*?(\\S+)$`));
       if (match && match[2] === filename) {
         return match[1].toLowerCase();
       }
