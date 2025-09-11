@@ -4,7 +4,6 @@ import { getProjectPaths, isMinecraftWorkspace } from "./project";
 import { RockideInstaller } from "./installer";
 import { GitHubClient } from "./github";
 import { isValidPlatform } from "./platform";
-import { logger } from "./logger";
 import * as fs from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
@@ -15,69 +14,79 @@ let client: LanguageClient;
 let installer: RockideInstaller;
 
 export async function activate(context: ExtensionContext) {
-  try {
-    installer = new RockideInstaller(context);
-    registerCommands(context);
+  installer = new RockideInstaller(context);
+  registerCommands(context);
 
-    try {
-      const isMinecraft = await isMinecraftWorkspace();
-      
-      if (isMinecraft) {
-        if (!isValidPlatform()) {
-          window.showErrorMessage("Your platform is not supported by Rockide");
-        } else {
-          let timeoutId: NodeJS.Timeout | undefined;
-          const timeoutPromise = new Promise<string | null>((resolve) => {
-            timeoutId = setTimeout(() => {
-              logger.warn("Binary resolution timed out after 30 seconds");
-              resolve(null);
-            }, 30000);
-          });
-          
-          const binaryPath = await Promise.race([
-            ensureRockideBinary(context),
-            timeoutPromise
-          ]);
-          
-          if (timeoutId) {
-            clearTimeout(timeoutId);
-          }
-          
-          if (!binaryPath) {
-            window.showErrorMessage("Failed to initialize Rockide. Please check the extension output for details.");
-          } else {
-            const serverOptions: ServerOptions = {
-              command: binaryPath,
-            };
-            const clientOptions: LanguageClientOptions = {
-              documentSelector: [
-                { scheme: "file", language: "json" },
-                { scheme: "file", language: "jsonc" },
-              ],
-              uriConverters: {
-                code2Protocol: (uri) => uri.toString(true),
-                protocol2Code: (path) => Uri.parse(path),
-              },
-              initializationOptions: getProjectPaths(),
-            };
-            client = new LanguageClient("rockide", "Rockide", serverOptions, clientOptions);
-            client.onNotification("shutdown", () => {
-              client.stop();
-            });
-            client.start().catch((error) => {
-              logger.error("Language server failed to start", error);
-            });
-          }
-        }
+  try {
+    const isMinecraft = await isMinecraftWorkspace();
+    
+    if (isMinecraft) {
+      if (!isValidPlatform()) {
+        window.showErrorMessage("Your platform is not supported by Rockide");
+        return;
       }
-    } catch (error) {
-      logger.error("Failed to initialize language server", error);
+
+      const binaryPath = await ensureRockideBinaryWithTimeout(context);
+      
+      if (!binaryPath) {
+        window.showErrorMessage("Failed to initialize Rockide. Please check the extension output for details.");
+        return;
+      }
+
+      startLanguageServer(binaryPath);
     }
   } catch (error) {
-    logger.error("Error during extension activation", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`Error during extension activation: ${errorMessage}`);
+    // User error message is already shown with window.showErrorMessage above
     window.showErrorMessage(`Rockide extension encountered an error during activation: ${errorMessage}. Commands may still work.`);
   }
+}
+
+async function ensureRockideBinaryWithTimeout(context: ExtensionContext): Promise<string | null> {
+  let timeoutId: NodeJS.Timeout | undefined;
+  const timeoutPromise = new Promise<string | null>((resolve) => {
+    timeoutId = setTimeout(() => {
+      console.warn("Binary resolution timed out after 30 seconds");
+      resolve(null);
+    }, 30000);
+  });
+  
+  const binaryPath = await Promise.race([
+    ensureRockideBinary(context),
+    timeoutPromise
+  ]);
+  
+  if (timeoutId) {
+    clearTimeout(timeoutId);
+  }
+  
+  return binaryPath;
+}
+
+function startLanguageServer(binaryPath: string): void {
+  const serverOptions: ServerOptions = {
+    command: binaryPath,
+  };
+  const clientOptions: LanguageClientOptions = {
+    documentSelector: [
+      { scheme: "file", language: "json" },
+      { scheme: "file", language: "jsonc" },
+    ],
+    uriConverters: {
+      code2Protocol: (uri) => uri.toString(true),
+      protocol2Code: (path) => Uri.parse(path),
+    },
+    initializationOptions: getProjectPaths(),
+  };
+  client = new LanguageClient("rockide", "Rockide", serverOptions, clientOptions);
+  client.onNotification("shutdown", () => {
+    client.stop();
+  });
+  client.start().catch((error) => {
+    console.error("Language server failed to start:", error);
+    window.showErrorMessage("Failed to start Rockide language server. Please check the extension output for details.");
+  });
 }
 
 async function ensureRockideBinary(context: ExtensionContext): Promise<string | null> {
@@ -116,22 +125,28 @@ async function verifyBinary(binaryPath: string): Promise<boolean> {
 }
 
 async function findRockideInPath(): Promise<string | null> {
+  // Try Windows first
   try {
     const { stdout } = await execAsync("where rockide", { timeout: 3000 });
     const paths = stdout.trim().split("\n").filter(Boolean);
     if (paths[0]) {
       return paths[0];
     }
-  } catch {
-    try {
-      const { stdout } = await execAsync("which rockide", { timeout: 3000 });
-      const path = stdout.trim();
-      if (path) {
-        return path;
-      }
-    } catch {
-    }
+  } catch (error) {
+    // Ignore error, try Unix next
   }
+
+  // Try Unix systems
+  try {
+    const { stdout } = await execAsync("which rockide", { timeout: 3000 });
+    const path = stdout.trim();
+    if (path) {
+      return path;
+    }
+  } catch (error) {
+    // Ignore error, return null
+  }
+
   return null;
 }
 
@@ -169,7 +184,8 @@ async function checkForUpdatesInBackground(context: ExtensionContext): Promise<v
       }
     }
   } catch (error) {
-    logger.error("Failed to check for updates", error);
+    console.error("Failed to check for updates:", error);
+    // Background check, no user notification needed
   }
 }
 
@@ -213,7 +229,8 @@ function registerCommands(context: ExtensionContext): void {
         
         await updateRockide();
       } catch (error) {
-        logger.error("Update command failed", error);
+        console.error("Update command failed:", error);
+        // User error message is already shown with window.showErrorMessage above
         const errorMessage = error instanceof Error ? error.message : String(error);
         window.showErrorMessage(`Failed to update: ${errorMessage}`);
       }
@@ -235,19 +252,32 @@ function registerCommands(context: ExtensionContext): void {
         
         const selected = await githubClient.selectRelease(releases);
         if (selected) {
+          // Stop the language server before reinstalling to avoid file lock issues
+          if (client) {
+            await client.stop();
+          }
+          
           const newPath = await installer.install({ 
             version: selected.tag_name, 
             forceReinstall: true 
           });
           
           if (newPath) {
-            window.showInformationMessage(`Rockide ${selected.tag_name} installed successfully.`);
+            const choice = await window.showInformationMessage(
+              "Please reload the window to use the new version.",
+              "Reload"
+            );
+
+            if (choice === "Reload") {
+              commands.executeCommand("workbench.action.reloadWindow");
+            }
           } else {
             window.showErrorMessage("Failed to install selected version");
           }
         }
       } catch (error) {
-        logger.error("Select version command failed", error);
+        console.error("Select version command failed:", error);
+        // User error message is already shown with window.showErrorMessage above
         const errorMessage = error instanceof Error ? error.message : String(error);
         window.showErrorMessage(`Failed to fetch releases: ${errorMessage}`);
       }

@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import { getPlatformInfo } from "./platform";
-import { logger } from "./logger";
 
 const GITHUB_API_URL = "https://api.github.com/repos/veedy-dev/rockide/releases";
 
@@ -48,7 +47,7 @@ export class GitHubClient {
 
       return await response.json() as GitHubRelease;
     } catch (error) {
-      logger.error("Failed to fetch latest release", error);
+      console.error("Failed to fetch latest release:", error);
       throw error;
     }
   }
@@ -69,7 +68,7 @@ export class GitHubClient {
       const releases = await response.json() as GitHubRelease[];
       return releases;
     } catch (error) {
-      logger.error("Failed to fetch releases", error);
+      console.error("Failed to fetch releases:", error);
       throw error;
     }
   }
@@ -79,7 +78,7 @@ export class GitHubClient {
       const releases = await this.getAllReleases();
       return releases.find((r) => r.tag_name === version || r.tag_name === `v${version}`) || null;
     } catch (error) {
-      logger.error(`Failed to fetch release ${version}`, error);
+      console.error(`Failed to fetch release ${version}:`, error);
       throw error;
     }
   }
@@ -89,7 +88,20 @@ export class GitHubClient {
     const asset = release.assets.find((a) => a.name === platformInfo.archiveName);
 
     if (!asset) {
-      logger.warn(`No asset found for platform: ${platformInfo.archiveName}`);
+      console.warn(`No asset found for platform: ${platformInfo.archiveName}`);
+      return null;
+    }
+
+    return asset;
+  }
+
+  getChecksumAssetForPlatform(release: GitHubRelease): GitHubAsset | null {
+    const platformInfo = getPlatformInfo();
+    const checksumAssetName = `${platformInfo.archiveName}.sha256`;
+    const asset = release.assets.find((a) => a.name === checksumAssetName);
+
+    if (!asset) {
+      console.warn(`No checksum asset found for platform: ${checksumAssetName}`);
       return null;
     }
 

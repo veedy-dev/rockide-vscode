@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { promisify } from "util";
-import { logger } from "./logger";
+import { CryptoUtils } from "./crypto";
 
 const writeFileAsync = promisify(fs.writeFile);
 
@@ -10,6 +10,8 @@ export interface DownloadOptions {
   url: string;
   destPath: string;
   progressTitle?: string;
+  checksumUrl?: string;
+  verifyChecksum?: boolean;
 }
 
 export class Downloader {
@@ -74,6 +76,14 @@ export class Downloader {
           await this.ensureDirectoryExists(path.dirname(options.destPath));
           await writeFileAsync(options.destPath, buffer);
 
+          if (options.verifyChecksum && options.checksumUrl) {
+            const isValid = await this.verifyDownloadChecksum(options.destPath, options.checksumUrl);
+            if (!isValid) {
+              await this.cleanup(options.destPath);
+              throw new Error("Checksum verification failed. Download may be corrupted.");
+            }
+          }
+
           return options.destPath;
         } catch (error) {
           await this.cleanup(options.destPath);
@@ -115,7 +125,32 @@ export class Downloader {
         fs.unlinkSync(filePath);
       }
     } catch (error) {
-      logger.warn(`Failed to cleanup ${filePath}: ${error}`);
+      console.warn(`Failed to cleanup ${filePath}:`, error);
+    }
+  }
+
+  private async verifyDownloadChecksum(filePath: string, checksumUrl: string): Promise<boolean> {
+    try {
+      const checksumResponse = await fetch(checksumUrl);
+      if (!checksumResponse.ok) {
+        console.warn(`Failed to download checksum file: ${checksumResponse.status} ${checksumResponse.statusText}`);
+        return false;
+      }
+
+      const checksumContent = await checksumResponse.text();
+      const fileName = path.basename(filePath);
+      const expectedHash = CryptoUtils.parseChecksumFile(checksumContent, fileName);
+
+      if (!expectedHash) {
+        console.warn(`Checksum not found for ${fileName} in checksum file`);
+        return false;
+      }
+
+      console.log(`Verifying checksum for ${fileName}: ${expectedHash.substring(0, 16)}...`);
+      return await CryptoUtils.verifyFileHash(filePath, expectedHash);
+    } catch (error) {
+      console.error("Failed to verify checksum:", error);
+      return false;
     }
   }
 }

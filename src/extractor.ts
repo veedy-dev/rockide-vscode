@@ -3,7 +3,6 @@ import * as path from "path";
 import { promisify } from "util";
 import { exec } from "child_process";
 import { getPlatformInfo } from "./platform";
-import { logger } from "./logger";
 
 const execAsync = promisify(exec);
 const mkdirAsync = promisify(fs.mkdir);
@@ -29,7 +28,7 @@ export class Extractor {
 
       return extractedPath;
     } catch (error) {
-      logger.error("Extraction failed", error);
+      console.error("Extraction failed:", error);
       throw new Error(`Failed to extract archive: ${error}`);
     }
   }
@@ -40,7 +39,7 @@ export class Extractor {
         shell: "cmd.exe",
       });
     } catch (error) {
-      logger.error("tar command failed on Windows, trying PowerShell", error);
+      console.error("tar command failed on Windows, trying PowerShell:", error);
       await this.extractWithPowerShell(archivePath, destDir);
     }
   }
@@ -61,7 +60,7 @@ export class Extractor {
     try {
       await chmodAsync(filePath, 0o755);
     } catch (error) {
-      logger.warn(`Failed to set executable permissions: ${error}`);
+      console.warn(`Failed to set executable permissions:`, error);
     }
   }
 
@@ -81,7 +80,7 @@ export class Extractor {
         fs.unlinkSync(filePath);
       }
     } catch (error) {
-      logger.warn(`Failed to cleanup ${filePath}: ${error}`);
+      console.warn(`Failed to cleanup ${filePath}:`, error);
     }
   }
 }

@@ -6,7 +6,6 @@ import { GitHubClient } from "./github";
 import { Downloader } from "./downloader";
 import { Extractor } from "./extractor";
 import { getPlatformInfo } from "./platform";
-import { logger } from "./logger";
 
 const readdirAsync = promisify(fs.readdir);
 const statAsync = promisify(fs.stat);
@@ -33,35 +32,36 @@ export class RockideInstaller {
   }
 
   async install(options: InstallOptions = {}): Promise<string | null> {
+    const customPath = vscode.workspace.getConfiguration("rockide").get<string>("binaryPath");
+    if (customPath && fs.existsSync(customPath) && !options.forceReinstall) {
+      return customPath;
+    }
+
+    const release = await this.getReleaseOrLatest(options.version);
+    if (!release) {
+      return null;
+    }
+
+    const installedPath = await this.getInstalledBinaryPath(release.tag_name);
+    if (installedPath && !options.forceReinstall) {
+      return installedPath;
+    }
+
+    const asset = this.githubClient.getAssetForPlatform(release);
+    if (!asset) {
+      vscode.window.showErrorMessage(
+        `No Rockide binary available for your platform (${getPlatformInfo().archiveName})`
+      );
+      return null;
+    }
+
     try {
-      const customPath = vscode.workspace.getConfiguration("rockide").get<string>("binaryPath");
-      if (customPath && fs.existsSync(customPath) && !options.forceReinstall) {
-        return customPath;
-      }
-
-      const release = options.version
-        ? await this.githubClient.getRelease(options.version)
-        : await this.githubClient.getLatestRelease();
-
-      if (!release) {
-        vscode.window.showErrorMessage("Failed to fetch Rockide release information");
-        return null;
-      }
-
-      const installedPath = await this.getInstalledBinaryPath(release.tag_name);
-      if (installedPath && !options.forceReinstall) {
-        return installedPath;
-      }
-
-      const asset = this.githubClient.getAssetForPlatform(release);
-      if (!asset) {
-        vscode.window.showErrorMessage(
-          `No Rockide binary available for your platform (${getPlatformInfo().archiveName})`
-        );
-        return null;
-      }
-
-      const binaryPath = await this.downloadAndInstall(release.tag_name, asset.browser_download_url);
+      const checksumAsset = this.githubClient.getChecksumAssetForPlatform(release);
+      const binaryPath = await this.downloadAndInstall(
+        release.tag_name, 
+        asset.browser_download_url,
+        checksumAsset?.browser_download_url
+      );
       
       await this.cleanupOldVersions();
       await this.verifyInstallation(binaryPath);
@@ -69,8 +69,27 @@ export class RockideInstaller {
       vscode.window.showInformationMessage(`Rockide ${release.tag_name} installed successfully`);
       return binaryPath;
     } catch (error: any) {
-      logger.error("Installation failed", error);
+      console.error("Installation failed:", error);
       vscode.window.showErrorMessage(`Failed to install Rockide: ${error.message}`);
+      return null;
+    }
+  }
+
+  private async getReleaseOrLatest(version?: string): Promise<any> {
+    try {
+      const release = version
+        ? await this.githubClient.getRelease(version)
+        : await this.githubClient.getLatestRelease();
+
+      if (!release) {
+        vscode.window.showErrorMessage("Failed to fetch Rockide release information");
+        return null;
+      }
+
+      return release;
+    } catch (error) {
+      console.error("Failed to fetch release:", error);
+      vscode.window.showErrorMessage("Failed to fetch Rockide release information");
       return null;
     }
   }
@@ -86,7 +105,7 @@ export class RockideInstaller {
 
       return latestRelease.tag_name !== currentVersion;
     } catch (error) {
-      logger.error("Failed to check for updates", error);
+      console.error("Failed to check for updates:", error);
       return false;
     }
   }
@@ -103,7 +122,7 @@ export class RockideInstaller {
       const versions = await this.getInstalledVersions();
       return versions.length > 0 ? versions[0] : null;
     } catch (error) {
-      logger.error("Failed to get current version", error);
+      console.error("Failed to get current version:", error);
       return null;
     }
   }
@@ -124,7 +143,7 @@ export class RockideInstaller {
     return path.join(this.getBinariesDir(), latestVersion, platformInfo.executableName);
   }
 
-  private async downloadAndInstall(version: string, downloadUrl: string): Promise<string> {
+  private async downloadAndInstall(version: string, downloadUrl: string, checksumUrl?: string): Promise<string> {
     const platformInfo = getPlatformInfo();
     const tempDir = path.join(this.context.globalStorageUri.fsPath, "temp");
     const archivePath = path.join(tempDir, platformInfo.archiveName);
@@ -139,6 +158,8 @@ export class RockideInstaller {
         url: downloadUrl,
         destPath: archivePath,
         progressTitle: `Downloading Rockide ${version}`,
+        checksumUrl: checksumUrl,
+        verifyChecksum: !!checksumUrl,
       });
 
       const binaryPath = await this.extractor.extractTarGz(archivePath, versionDir);
@@ -229,13 +250,32 @@ export class RockideInstaller {
         if (stat.isDirectory()) {
           await this.cleanup(filePath);
         } else {
-          await unlinkAsync(filePath);
+          try {
+            await unlinkAsync(filePath);
+          } catch (error: any) {
+            // Handle locked files gracefully
+            if (error.code === 'EBUSY' || error.code === 'EPERM' || error.code === 'EACCES') {
+              console.warn(`File is locked and will be cleaned on next restart: ${filePath}`);
+              // Continue with other files instead of stopping
+              continue;
+            }
+            throw error; // Re-throw other errors
+          }
         }
       }
       
-      await rmdirAsync(dirPath);
+      // Try to remove directory, but don't fail if it contains locked files
+      try {
+        await rmdirAsync(dirPath);
+      } catch (error: any) {
+        if (error.code === 'ENOTEMPTY') {
+          console.warn(`Directory contains locked files and will be cleaned on next restart: ${dirPath}`);
+        } else {
+          throw error;
+        }
+      }
     } catch (error) {
-      logger.warn(`Failed to cleanup ${dirPath}: ${error}`);
+      console.warn(`Failed to cleanup ${dirPath}:`, error);
     }
   }
 
