@@ -51,7 +51,6 @@ export class RockideInstaller {
 
       const installedPath = await this.getInstalledBinaryPath(release.tag_name);
       if (installedPath && !options.forceReinstall) {
-        logger.log(`Rockide already installed: ${installedPath}`);
         return installedPath;
       }
 
@@ -98,13 +97,10 @@ export class RockideInstaller {
       const binaryPath = await this.getActiveBinaryPath();
       if (!binaryPath) return null;
 
-      // Extract version from the path (e.g., .../binaries/v0.0.5/rockide.exe)
       const match = binaryPath.match(/binaries[/\\](v?\d+\.\d+\.\d+)[/\\]/);
       if (match) {
         return match[1];
       }
-
-      // Fallback: get the latest installed version
       const versions = await this.getInstalledVersions();
       return versions.length > 0 ? versions[0] : null;
     } catch (error) {
@@ -136,9 +132,7 @@ export class RockideInstaller {
     const versionDir = path.join(this.getBinariesDir(), version);
 
     try {
-      // Clean up existing version directory if it exists (for updates)
       if (fs.existsSync(versionDir)) {
-        logger.log(`Cleaning up existing version directory: ${versionDir}`);
         await this.cleanup(versionDir);
       }
 
@@ -161,18 +155,14 @@ export class RockideInstaller {
   }
 
   private async verifyInstallation(binaryPath: string): Promise<void> {
-    // Just verify the file exists and has reasonable size
-    // since rockide doesn't support --version flag
     if (!fs.existsSync(binaryPath)) {
       throw new Error(`Binary not found at ${binaryPath}`);
     }
     
     const stats = fs.statSync(binaryPath);
-    if (stats.size < 1000000) { // Less than 1MB is suspicious
+    if (stats.size < 1000000) {
       throw new Error(`Binary appears to be invalid (size: ${stats.size} bytes)`);
     }
-    
-    logger.log(`Binary verified at ${binaryPath} (size: ${stats.size} bytes)`);
   }
 
   private async getInstalledBinaryPath(version: string): Promise<string | null> {

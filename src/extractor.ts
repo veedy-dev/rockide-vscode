@@ -46,7 +46,6 @@ export class Extractor {
   }
 
   private async extractWithPowerShell(archivePath: string, destDir: string): Promise<void> {
-    // Windows 10 1803+ has tar built-in, use it through PowerShell
     const command = `tar -xzf "${archivePath}" -C "${destDir}"`;
     
     await execAsync(command, {
