@@ -1,5 +1,6 @@
 {
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
-  "editor.rulers": [100],
-  "editor.formatOnSave": true
+	"editor.defaultFormatter": "dprint.dprint",
+	"editor.formatOnSave": true,
+	"editor.rulers": [100],
+	"typescript.tsc.autoDetect": "off"
 }

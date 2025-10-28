@@ -1,22 +1,22 @@
 {
-  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "scopeName": "source.rockide.molang",
-  "patterns": [
-    {
-      "name": "entity.name.class",
-      "match": "(?i)(q|v|t|c|query|variable|temp|context|math|array|geometry|material|texture)(?=\\.)"
-    },
-    {
-      "name": "entity.name.function",
-      "match": "(?i)(?<=\\b(q|v|t|c|query|variable|temp|context|math|array|geometry|material|texture))\\.[\\w.]+"
-    },
-    {
-      "name": "variable.parameter",
-      "match": "\\w+(?=\\??: \\w+)"
-    },
-    {
-      "name": "entity.name.type",
-      "match": "(?<=[:|] )\\w+"
-    }
-  ]
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"scopeName": "source.rockide.molang",
+	"patterns": [
+		{
+			"name": "entity.name.class",
+			"match": "(?i)(q|v|t|c|query|variable|temp|context|math|array|geometry|material|texture)(?=\\.)"
+		},
+		{
+			"name": "entity.name.function",
+			"match": "(?i)(?<=\\b(q|v|t|c|query|variable|temp|context|math|array|geometry|material|texture))\\.[\\w.]+"
+		},
+		{
+			"name": "variable.parameter",
+			"match": "\\w+(?=\\??: \\w+)"
+		},
+		{
+			"name": "entity.name.type",
+			"match": "(?<=[:|] )\\w+"
+		}
+	]
 }
