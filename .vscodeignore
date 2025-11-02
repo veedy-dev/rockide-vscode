@@ -1,6 +1,13 @@
 .vscode/**
+.vscode-test/**
+node_modules/**
 src/**
 .gitignore
-.prettierrc
+esbuild.js
+vsc-extension-quickstart.md
+**/dprint.json
+**/tsconfig.json
+**/eslint.config.js
 **/*.map
 **/*.ts
+**/.vscode-test.*
