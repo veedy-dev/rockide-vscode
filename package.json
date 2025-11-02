@@ -29,13 +29,18 @@
 		"clone-schemas": "degit github:ink0rr/editor-packages/packages/minecraftBedrock/schema#rockide schemas"
 	},
 	"dependencies": {
+		"modern-tar": "^0.6.1",
+		"semver": "^7.7.3",
 		"strip-json-comments": "^5.0.3",
-		"vscode-languageclient": "^9.0.1"
+		"vscode-languageclient": "^9.0.1",
+		"which": "^5.0.0"
 	},
 	"devDependencies": {
 		"@eslint/js": "^9.38.0",
 		"@types/node": "22.x",
+		"@types/semver": "^7.7.1",
 		"@types/vscode": "^1.99.0",
+		"@types/which": "^3.0.4",
 		"degit": "^2.8.4",
 		"dprint": "^0.50.2",
 		"esbuild": "^0.25.11",
@@ -45,6 +50,7 @@
 		"typescript-eslint": "^8.46.2"
 	},
 	"activationEvents": [
+		"onCommand:rockide.update",
 		"onLanguage:json",
 		"onLanguage:jsonc",
 		"workspaceContains:**/*.mcfunction",
@@ -52,9 +58,20 @@
 		"workspaceContains:**/*.mcworld"
 	],
 	"contributes": {
+		"commands": [
+			{
+				"command": "rockide.update",
+				"title": "Rockide: Check for Updates"
+			}
+		],
 		"configuration": {
 			"title": "Rockide Configuration",
 			"properties": {
+				"rockide.path": {
+					"type": "string",
+					"markdownDescription": "Specify a custom path for the rockide executable other than what's found on the path.",
+					"default": null
+				},
 				"rockide.projectPaths": {
 					"oneOf": [
 						{

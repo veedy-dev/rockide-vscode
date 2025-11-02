@@ -1,34 +1,45 @@
 import * as vscode from "vscode";
-import { LanguageClient, LanguageClientOptions, ServerOptions } from "vscode-languageclient/node";
-import { getProjectPaths, isMinecraftWorkspace } from "./project";
+import { startClient, stopClient } from "./lsp";
+import { isMinecraftWorkspace } from "./project";
+import {
+	getDefaultRockidePath,
+	getInstalledRockideExe,
+	promptInstallRockide,
+	updateRockide,
+} from "./rockide";
 
-let client: LanguageClient;
+export async function activate(ctx: vscode.ExtensionContext) {
+	ctx.subscriptions.push(
+		vscode.commands.registerCommand("rockide.update", async () => {
+			try {
+				await updateRockide(ctx);
+			} catch (err) {
+				if (err instanceof Error) {
+					vscode.window.showErrorMessage(err.message);
+				}
+			}
+		}),
+	);
 
-export async function activate() {
-	if (!(await isMinecraftWorkspace())) {
-		return;
+	let rockideExe = await getInstalledRockideExe(ctx);
+	if (!rockideExe) {
+		try {
+			rockideExe = getDefaultRockidePath(ctx);
+			await promptInstallRockide(rockideExe);
+		} catch (err) {
+			if (err instanceof Error) {
+				vscode.window.showErrorMessage(err.message);
+			}
+			return;
+		}
 	}
-	const serverOptions: ServerOptions = {
-		command: "rockide",
-	};
-	const clientOptions: LanguageClientOptions = {
-		documentSelector: [
-			{ scheme: "file", language: "json" },
-			{ scheme: "file", language: "jsonc" },
-		],
-		uriConverters: {
-			code2Protocol: (uri) => uri.toString(true),
-			protocol2Code: (path) => vscode.Uri.parse(path),
-		},
-		initializationOptions: getProjectPaths(),
-	};
-	client = new LanguageClient("rockide", "Rockide", serverOptions, clientOptions);
-	client.onNotification("shutdown", () => {
-		client.stop();
-	});
-	client.start();
+
+	if (await isMinecraftWorkspace()) {
+		await startClient(rockideExe);
+		await updateRockide(ctx, true);
+	}
 }
 
-export function deactivate() {
-	return client?.stop();
+export async function deactivate() {
+	await stopClient();
 }
